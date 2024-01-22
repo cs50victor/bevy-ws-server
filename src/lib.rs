@@ -9,7 +9,7 @@ use std::net::{TcpListener, TcpStream};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 pub use async_channel::TryRecvError as ReceiveError;
 use async_native_tls::{TlsAcceptor, TlsStream};
 use async_tungstenite::{tungstenite, WebSocketStream};
@@ -119,17 +119,34 @@ impl WsListener {
 
                         let accept = async move {
                             let ws_stream = match &tls {
-                                None => WsStream::Plain(
-                                    async_tungstenite::accept_async(stream).await.unwrap(),
-                                ),
+                                None => {
+                                    let stream = match async_tungstenite::accept_async(stream).await {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            bail!("Error accepting web socket connection | {e}");
+                                        }
+                                    };
+                                    
+                                    WsStream::Plain(stream)
+                                },
                                 Some(tls) => {
-                                    let tls_stream = tls.accept(stream).await.unwrap();
-                                    WsStream::Tls(
-                                        async_tungstenite::accept_async(tls_stream).await.unwrap(),
-                                    )
+                                    let tls_stream = match tls.accept(stream).await {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            bail!("Error accepting creating TLS web socket connection | {e}");
+                                        }
+                                    };
+                                    let stream = match async_tungstenite::accept_async(tls_stream).await {
+                                        Ok(s) => s,
+                                        Err(e) => {
+                                            bail!("Error accepting web socket connection | {e}");
+                                        }
+                                    };
+                                    WsStream::Tls(stream)
                                 }
                             };
                             let _ = ws_tx.send(ws_stream);
+                            Ok(())
                         };
 
                         task_pool.spawn(accept).detach();
