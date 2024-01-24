@@ -1,4 +1,5 @@
 # bevy-ws-server
+moved to [new_media](https://github.com/cs50victor/new_media)
 
 WebSocket server plugin for bevy.
 
